@@ -1,9 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Heart, ImagePlus, Loader2, LockKeyhole, Sparkles, Upload, X } from 'lucide-react'
+import { Camera, Heart, ImagePlus, Loader2, LockKeyhole, Sparkles, Trash2, Upload, X } from 'lucide-react'
 
-type Memory = { url: string; pathname: string; uploadedAt?: string }
+type Memory = {
+  url: string
+  pathname: string
+  uploadedAt?: string
+  kind: 'image' | 'video'
+  userUploaded?: boolean
+}
 
 const startedDating = new Date(2023, 10, 24)
 
@@ -17,9 +23,18 @@ function getDuration() {
   return { years, months, days }
 }
 
+function getMediaKind(file: File): Memory['kind'] | null {
+  const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name)
+  const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|avi|mkv|ogg)$/i.test(file.name)
+
+  if (isImage) return 'image'
+  if (isVideo) return 'video'
+  return null
+}
+
 const starterMemories: Memory[] = [
-  { pathname: 'shared-night-view', url: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/WhatsApp%20Image%202026-11-06%20at%206.59.54%20PM-ILEgGsr5HvTIxfauW6jPtx9Q3y6F9H.jpeg' },
-  { pathname: 'shared-sunny-day', url: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/WhatsApp%20Image%202026-11-06%20at%207.00.48%20PM-QQIYrK84CbF1E2v0EzlXLTiXlACEBU.jpeg' },
+  { pathname: 'shared-night-view', url: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/WhatsApp%20Image%202026-11-06%20at%206.59.54%20PM-ILEgGsr5HvTIxfauW6jPtx9Q3y6F9H.jpeg', kind: 'image', userUploaded: false },
+  { pathname: 'shared-sunny-day', url: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/WhatsApp%20Image%202026-11-06%20at%207.00.48%20PM-QQIYrK84CbF1E2v0EzlXLTiXlACEBU.jpeg', kind: 'image', userUploaded: false },
 ]
 
 export default function RomanticMemory() {
@@ -27,19 +42,39 @@ export default function RomanticMemory() {
   const [memories, setMemories] = useState<Memory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
-  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const timer = window.setInterval(() => setDuration(getDuration()), 1000 * 60 * 60)
-    fetch('/api/memories').then((response) => response.json()).then((data) => setMemories(data.memories ?? [])).catch(() => undefined).finally(() => setIsLoading(false))
+    fetch('/api/memories')
+      .then((response) => response.json())
+      .then((data) => setMemories((data.memories ?? []).map((memory: Memory) => ({ ...memory, kind: memory.kind ?? 'image', userUploaded: true }))))
+      .catch(() => undefined)
+      .finally(() => setIsLoading(false))
     return () => window.clearInterval(timer)
   }, [])
 
   const allMemories = [...starterMemories, ...memories]
   const memoryCount = allMemories.length
   const formattedCount = useMemo(() => String(memoryCount).padStart(2, '0'), [memoryCount])
+
+  async function handleDelete(memory: Memory, event?: React.MouseEvent) {
+    event?.stopPropagation()
+    if (!memory.userUploaded) return
+
+    try {
+      const response = await fetch(`/api/memories?pathname=${encodeURIComponent(memory.pathname)}`, { method: 'DELETE' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error ?? 'The memory could not be deleted.')
+
+      setMemories((current) => current.filter((item) => item.pathname !== memory.pathname))
+      setSelectedMemory((current) => (current?.pathname === memory.pathname ? null : current))
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'The memory could not be deleted. Please try again.')
+    }
+  }
 
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
@@ -48,24 +83,27 @@ export default function RomanticMemory() {
     setUploadError(null)
     try {
       for (const file of files) {
-        const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name)
-        if (!isImage) {
-          setUploadError('Please choose an image file.')
+        const mediaKind = getMediaKind(file)
+        if (!mediaKind) {
+          setUploadError('Please choose an image or video file.')
           continue
         }
-        if (file.size > 10 * 1024 * 1024) {
-          setUploadError('Each image must be smaller than 10MB.')
+
+        const maxSize = mediaKind === 'video' ? 25 * 1024 * 1024 : 10 * 1024 * 1024
+        if (file.size > maxSize) {
+          setUploadError(mediaKind === 'video' ? 'Each video must be smaller than 25MB.' : 'Each image must be smaller than 10MB.')
           continue
         }
+
         const formData = new FormData()
         formData.append('file', file)
         const response = await fetch('/api/memories', { method: 'POST', body: formData })
         const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.error ?? 'The photo could not be saved.')
-        setMemories((current) => [data.memory, ...current])
+        if (!response.ok) throw new Error(data.error ?? 'The media could not be saved.')
+        setMemories((current) => [{ ...data.memory, userUploaded: true, kind: data.memory.kind ?? mediaKind }, ...current])
       }
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : 'The photo could not be saved. Please try again.')
+      setUploadError(error instanceof Error ? error.message : 'The media could not be saved. Please try again.')
     } finally {
       setIsUploading(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -97,15 +135,39 @@ export default function RomanticMemory() {
       <section className="gallery-section" aria-labelledby="gallery-title">
         <div className="section-heading"><div><p className="eyebrow">our shared scrapbook</p><h2 id="gallery-title">Little moments,<br /><em>big feelings.</em></h2></div><span className="photo-count"><Camera size={15} /> {formattedCount} {memoryCount === 1 ? 'memory' : 'memories'}</span></div>
         <div className="gallery-grid">
-          {allMemories.map((memory, index) => <button className="photo-tile" key={memory.pathname} onClick={() => setSelectedImage(memory.url)} aria-label={`View memory ${index + 1}`}><img src={memory.url} alt={index === 0 ? 'Us together at night with the city behind us' : index === 1 ? 'Us together on a sunny day' : 'A shared memory'} /></button>)}
+          {allMemories.map((memory, index) => (
+            <div className="photo-tile" key={`${memory.pathname}-${index}`}>
+              <button className="photo-tile__button" type="button" onClick={() => setSelectedMemory(memory)} aria-label={`View memory ${index + 1}`}>
+                {memory.kind === 'video' ? (
+                  <video src={memory.url} playsInline muted loop />
+                ) : (
+                  <img src={memory.url} alt={index === 0 ? 'Us together at night with the city behind us' : index === 1 ? 'Us together on a sunny day' : 'A shared memory'} />
+                )}
+              </button>
+              {memory.userUploaded && (
+                <button type="button" className="delete-button" onClick={(event) => handleDelete(memory, event)} aria-label={`Delete memory ${index + 1}`}>
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          ))}
           {isLoading && <div className="empty-state"><Loader2 className="spin" size={22} /><span>Finding our memories...</span></div>}
           {!isLoading && allMemories.length === 0 && <div className="empty-state"><ImagePlus size={22} /><span>Your first memory is waiting below</span></div>}
         </div>
-        <div className="upload-panel"><div><p className="upload-title">Add to our story</p><p className="upload-subtitle">Keep the little moments close. Images up to 10MB.</p>{uploadError && <p className="upload-error" role="alert">{uploadError}</p>}</div><button className="upload-button" onClick={() => inputRef.current?.click()} disabled={isUploading}>{isUploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} {isUploading ? 'Saving...' : 'Add photos'}</button><input ref={inputRef} type="file" accept="image/*" multiple onChange={handleUpload} hidden /></div>
+        <div className="upload-panel"><div><p className="upload-title">Add to our story</p><p className="upload-subtitle">Keep the little moments close. Photos up to 10MB and videos up to 25MB.</p>{uploadError && <p className="upload-error" role="alert">{uploadError}</p>}</div><button className="upload-button" onClick={() => inputRef.current?.click()} disabled={isUploading}>{isUploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} {isUploading ? 'Saving...' : 'Add photos & videos'}</button><input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={handleUpload} hidden /></div>
       </section>
 
       <footer><span><Heart size={13} fill="currentColor" /> made for my love</span><span>one day at a time · forever to go</span></footer>
-      {selectedImage && <div className="lightbox" role="dialog" aria-modal="true" aria-label="Memory preview" onClick={() => setSelectedImage(null)}><button className="close-button" onClick={() => setSelectedImage(null)} aria-label="Close preview"><X /></button><img src={selectedImage} alt="Enlarged shared memory" onClick={(event) => event.stopPropagation()} /></div>}
+      {selectedMemory && (
+        <div className="lightbox" role="dialog" aria-modal="true" aria-label="Memory preview" onClick={() => setSelectedMemory(null)}>
+          <button className="close-button" onClick={() => setSelectedMemory(null)} aria-label="Close preview"><X /></button>
+          {selectedMemory.kind === 'video' ? (
+            <video className="lightbox-media" src={selectedMemory.url} controls playsInline autoPlay onClick={(event) => event.stopPropagation()} />
+          ) : (
+            <img className="lightbox-media" src={selectedMemory.url} alt="Enlarged shared memory" onClick={(event) => event.stopPropagation()} />
+          )}
+        </div>
+      )}
       <div className="privacy-note"><LockKeyhole size={12} /> Only people with this link can see your memories</div>
     </main>
   )
