@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     if (!result) return new NextResponse('Not found', { status: 404 })
     return new NextResponse(result.stream, {
       headers: {
-        'Content-Type': result.blob.contentType,
+        'Content-Type': result.blob.contentType ?? 'application/octet-stream',
         ETag: result.blob.etag,
         'Cache-Control': 'private, no-cache',
       },
@@ -65,6 +65,7 @@ export async function GET(request: Request) {
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json({
+      clientUploadsEnabled: false,
       memories: getMemoryStore()
         .slice()
         .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
@@ -80,13 +81,14 @@ export async function GET(request: Request) {
 
   const { blobs } = await list({ prefix: 'memories/' })
   return NextResponse.json({
+    clientUploadsEnabled: true,
     memories: blobs
       .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())
       .map((blob) => ({
         url: `/api/memories?pathname=${encodeURIComponent(blob.pathname)}`,
         pathname: blob.pathname,
         uploadedAt: blob.uploadedAt,
-        kind: blob.contentType?.startsWith('video/') ? 'video' : 'image',
+        kind: /\.(mp4|webm|mov|m4v|avi|mkv|ogg)$/i.test(blob.pathname) ? 'video' : 'image',
         userUploaded: true,
       })),
   })

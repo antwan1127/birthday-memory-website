@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Heart, ImagePlus, Loader2, LockKeyhole, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { upload } from '@vercel/blob/client'
 
 type Memory = {
   url: string
@@ -42,6 +43,7 @@ export default function RomanticMemory() {
   const [memories, setMemories] = useState<Memory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
+  const [clientUploadsEnabled, setClientUploadsEnabled] = useState(false)
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -49,8 +51,14 @@ export default function RomanticMemory() {
   useEffect(() => {
     const timer = window.setInterval(() => setDuration(getDuration()), 1000 * 60 * 60)
     fetch('/api/memories')
-      .then((response) => response.json())
-      .then((data) => setMemories((data.memories ?? []).map((memory: Memory) => ({ ...memory, kind: memory.kind ?? 'image', userUploaded: true }))))
+      .then((response) => {
+        if (!response.ok) throw new Error('Memories could not be loaded.')
+        return response.json()
+      })
+      .then((data) => {
+        setMemories((data.memories ?? []).map((memory: Memory) => ({ ...memory, kind: memory.kind ?? 'image', userUploaded: true })))
+        setClientUploadsEnabled(Boolean(data.clientUploadsEnabled))
+      })
       .catch(() => undefined)
       .finally(() => setIsLoading(false))
     return () => window.clearInterval(timer)
@@ -92,6 +100,28 @@ export default function RomanticMemory() {
         const maxSize = mediaKind === 'video' ? 25 * 1024 * 1024 : 10 * 1024 * 1024
         if (file.size > maxSize) {
           setUploadError(mediaKind === 'video' ? 'Each video must be smaller than 25MB.' : 'Each image must be smaller than 10MB.')
+          continue
+        }
+
+        if (!clientUploadsEnabled && file.size > 4 * 1024 * 1024) {
+          setUploadError('This file is too large for the current upload setup. Configure Vercel Blob storage to upload larger photos and videos.')
+          continue
+        }
+
+        if (clientUploadsEnabled) {
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+          const blob = await upload(`memories/${Date.now()}-${crypto.randomUUID()}-${safeName}`, file, {
+            access: 'private',
+            handleUploadUrl: '/api/memories/upload',
+            contentType: file.type || 'application/octet-stream',
+            multipart: file.size > 5 * 1024 * 1024,
+          })
+          setMemories((current) => [{
+            url: `/api/memories?pathname=${encodeURIComponent(blob.pathname)}`,
+            pathname: blob.pathname,
+            kind: mediaKind,
+            userUploaded: true,
+          }, ...current])
           continue
         }
 
