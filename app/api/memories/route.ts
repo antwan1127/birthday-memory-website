@@ -1,5 +1,6 @@
 import { del, get, list, put } from '@vercel/blob'
 import { NextResponse } from 'next/server'
+import { getMediaContentType } from '@/lib/memory-media'
 
 type MemoryRecord = {
   pathname: string
@@ -47,6 +48,10 @@ export async function GET(request: Request) {
   const pathname = new URL(request.url).searchParams.get('pathname')
   if (pathname) {
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      if (process.env.NODE_ENV === 'production') {
+        return new NextResponse('Persistent media storage is not configured.', { status: 503 })
+      }
+
       const response = await serveStoredMemory(pathname)
       if (response) return response
       return new NextResponse('Not found', { status: 404 })
@@ -64,9 +69,11 @@ export async function GET(request: Request) {
   }
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const uploadsUnavailable = process.env.NODE_ENV === 'production'
     return NextResponse.json({
       clientUploadsEnabled: false,
-      memories: getMemoryStore()
+      uploadsUnavailable,
+      memories: (uploadsUnavailable ? [] : getMemoryStore())
         .slice()
         .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
         .map((memory) => ({
@@ -110,11 +117,17 @@ export async function POST(request: Request) {
     }
 
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json({
+          error: 'Uploads are unavailable because persistent storage is not configured. Connect a Vercel Blob store, then try again.',
+        }, { status: 503 })
+      }
+
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
       const pathname = `memories/${Date.now()}-${safeName}`
       getMemoryStore().unshift({
         pathname,
-        contentType: file.type || 'application/octet-stream',
+        contentType: getMediaContentType(file),
         data: Buffer.from(await file.arrayBuffer()).toString('base64'),
         kind: mediaKind,
         uploadedAt: new Date().toISOString(),
@@ -134,7 +147,7 @@ export async function POST(request: Request) {
     const blob = await put(`memories/${Date.now()}-${safeName}`, file, {
       access: 'private',
       addRandomSuffix: false,
-      contentType: file.type,
+      contentType: getMediaContentType(file),
     })
 
     return NextResponse.json({

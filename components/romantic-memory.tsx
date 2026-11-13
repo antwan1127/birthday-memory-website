@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Heart, ImagePlus, Loader2, LockKeyhole, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { upload } from '@vercel/blob/client'
+import { getMediaContentType } from '@/lib/memory-media'
 
 type Memory = {
   url: string
@@ -67,6 +68,9 @@ export default function RomanticMemory() {
       .then((data) => {
         setMemories((data.memories ?? []).map((memory: Memory) => ({ ...memory, kind: memory.kind ?? 'image', userUploaded: true })))
         setClientUploadsEnabled(Boolean(data.clientUploadsEnabled))
+        if (data.uploadsUnavailable) {
+          setUploadError('Photo and video uploads need persistent storage. Connect a Vercel Blob store to this project.')
+        }
       })
       .catch(() => undefined)
       .finally(() => setIsLoading(false))
@@ -162,7 +166,7 @@ export default function RomanticMemory() {
           const blob = await upload(`memories/${Date.now()}-${crypto.randomUUID()}-${safeName}`, file, {
             access: 'private',
             handleUploadUrl: '/api/memories/upload',
-            contentType: file.type || 'application/octet-stream',
+            contentType: getMediaContentType(file),
             multipart: file.size > 5 * 1024 * 1024,
           })
           setMemories((current) => [{
