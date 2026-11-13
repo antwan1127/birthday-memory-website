@@ -32,16 +32,53 @@ function getMediaKind(file: File): 'image' | 'video' | null {
   return null
 }
 
-async function serveStoredMemory(pathname: string) {
+function parseByteRange(rangeHeader: string, size: number) {
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader)
+  if (!match || size === 0 || (!match[1] && !match[2])) return null
+
+  if (!match[1]) {
+    const suffixLength = Number(match[2])
+    if (suffixLength <= 0) return null
+    return { start: Math.max(size - suffixLength, 0), end: size - 1 }
+  }
+
+  const start = Number(match[1])
+  const end = match[2] ? Number(match[2]) : size - 1
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= size || end < start) return null
+  return { start, end: Math.min(end, size - 1) }
+}
+
+async function serveStoredMemory(pathname: string, rangeHeader: string | null) {
   const entry = getMemoryStore().find((memory) => memory.pathname === pathname)
   if (!entry) return null
 
-  return new NextResponse(Buffer.from(entry.data, 'base64'), {
-    headers: {
-      'Content-Type': entry.contentType,
-      'Cache-Control': 'private, no-cache',
-    },
+  const data = Buffer.from(entry.data, 'base64')
+  const headers = new Headers({
+    'Content-Type': entry.contentType,
+    'Cache-Control': 'private, no-cache',
   })
+
+  if (entry.kind !== 'video') {
+    return new NextResponse(data, { headers })
+  }
+
+  headers.set('Accept-Ranges', 'bytes')
+
+  if (!rangeHeader) {
+    headers.set('Content-Length', String(data.length))
+    return new NextResponse(data, { headers })
+  }
+
+  const range = parseByteRange(rangeHeader, data.length)
+  if (!range) {
+    headers.set('Content-Range', `bytes */${data.length}`)
+    return new NextResponse(null, { status: 416, headers })
+  }
+
+  const body = data.subarray(range.start, range.end + 1)
+  headers.set('Content-Length', String(body.length))
+  headers.set('Content-Range', `bytes ${range.start}-${range.end}/${data.length}`)
+  return new NextResponse(body, { status: 206, headers })
 }
 
 export async function GET(request: Request) {
@@ -52,19 +89,35 @@ export async function GET(request: Request) {
         return new NextResponse('Persistent media storage is not configured.', { status: 503 })
       }
 
-      const response = await serveStoredMemory(pathname)
+      const response = await serveStoredMemory(pathname, request.headers.get('range'))
       if (response) return response
       return new NextResponse('Not found', { status: 404 })
     }
 
-    const result = await get(pathname, { access: 'private' })
+    const isVideo = /\.(mp4|webm)$/i.test(pathname)
+    const rangeHeader = isVideo ? request.headers.get('range') : null
+    const result = await get(pathname, {
+      access: 'private',
+      headers: rangeHeader ? { Range: rangeHeader } : undefined,
+    })
     if (!result) return new NextResponse('Not found', { status: 404 })
+
+    const headers = new Headers({
+      'Content-Type': result.blob.contentType ?? 'application/octet-stream',
+      'Cache-Control': 'private, no-cache',
+      ETag: result.blob.etag,
+    })
+    const contentRange = result.headers.get('content-range')
+    if (isVideo) {
+      headers.set('Accept-Ranges', result.headers.get('accept-ranges') ?? 'bytes')
+      const contentLength = result.headers.get('content-length')
+      if (contentLength) headers.set('Content-Length', contentLength)
+      if (contentRange) headers.set('Content-Range', contentRange)
+    }
+
     return new NextResponse(result.stream, {
-      headers: {
-        'Content-Type': result.blob.contentType ?? 'application/octet-stream',
-        ETag: result.blob.etag,
-        'Cache-Control': 'private, no-cache',
-      },
+      status: isVideo && contentRange ? 206 : 200,
+      headers,
     })
   }
 

@@ -245,7 +245,7 @@ export default function RomanticMemory() {
         <div className="lightbox" role="dialog" aria-modal="true" aria-label="Memory preview" onClick={() => setSelectedMemory(null)}>
           <button className="close-button" onClick={() => setSelectedMemory(null)} aria-label="Close preview"><X /></button>
           {selectedMemory.kind === 'video' ? (
-            <video className="lightbox-media" src={selectedMemory.url} controls playsInline autoPlay onClick={(event) => event.stopPropagation()} />
+            <video className="lightbox-media" src={selectedMemory.url} controls playsInline preload="metadata" onClick={(event) => event.stopPropagation()} />
           ) : (
             <img className="lightbox-media" src={selectedMemory.url} alt="Enlarged shared memory" onClick={(event) => event.stopPropagation()} />
           )}
