@@ -39,6 +39,9 @@ const starterMemories: Memory[] = [
 ]
 
 export default function RomanticMemory() {
+  const [password, setPassword] = useState('')
+  const [isUnlocked, setIsUnlocked] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
   const [duration, setDuration] = useState(getDuration)
   const [memories, setMemories] = useState<Memory[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -49,6 +52,12 @@ export default function RomanticMemory() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    setIsUnlocked(window.sessionStorage.getItem('birthday-memory-unlocked') === 'true')
+  }, [])
+
+  useEffect(() => {
+    if (!isUnlocked) return
+
     const timer = window.setInterval(() => setDuration(getDuration()), 1000 * 60 * 60)
     fetch('/api/memories')
       .then((response) => {
@@ -62,11 +71,51 @@ export default function RomanticMemory() {
       .catch(() => undefined)
       .finally(() => setIsLoading(false))
     return () => window.clearInterval(timer)
-  }, [])
+  }, [isUnlocked])
 
   const allMemories = [...starterMemories, ...memories]
   const memoryCount = allMemories.length
   const formattedCount = useMemo(() => String(memoryCount).padStart(2, '0'), [memoryCount])
+
+  function handlePasswordSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (password === '24/11/2023') {
+      window.sessionStorage.setItem('birthday-memory-unlocked', 'true')
+      setPasswordError('')
+      setIsUnlocked(true)
+      return
+    }
+    setPasswordError('That is not the right password.')
+  }
+
+  if (!isUnlocked) {
+    return (
+      <main className="password-screen">
+        <section className="password-card" aria-labelledby="password-title">
+          <div className="password-icon" aria-hidden="true"><LockKeyhole size={24} /></div>
+          <p className="eyebrow">a private little place</p>
+          <h1 id="password-title">For your eyes<br /><em>only.</em></h1>
+          <p className="password-intro">Enter the password to open our scrapbook.</p>
+          <form className="password-form" onSubmit={handlePasswordSubmit}>
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter password"
+              autoComplete="off"
+              autoFocus
+              aria-invalid={Boolean(passwordError)}
+              aria-describedby={passwordError ? 'password-error' : undefined}
+            />
+            {passwordError && <p className="password-error" id="password-error" role="alert">{passwordError}</p>}
+            <button type="submit">Open our memories <Heart size={15} fill="currentColor" /></button>
+          </form>
+        </section>
+      </main>
+    )
+  }
 
   async function handleDelete(memory: Memory, event?: React.MouseEvent) {
     event?.stopPropagation()
