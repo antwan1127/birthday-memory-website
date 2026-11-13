@@ -24,7 +24,7 @@ function getMemoryStore() {
 
 function getMediaKind(file: File): 'image' | 'video' | null {
   const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name)
-  const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|avi|mkv|ogg)$/i.test(file.name)
+  const isVideo = /\.(mp4|webm)$/i.test(file.name)
 
   if (isImage) return 'image'
   if (isVideo) return 'video'
@@ -98,10 +98,10 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get('file')
-    if (!(file instanceof File)) return NextResponse.json({ error: 'Please choose an image or video file.' }, { status: 400 })
+    if (!(file instanceof File)) return NextResponse.json({ error: 'Please choose an image or an MP4 or WebM video.' }, { status: 400 })
 
     const mediaKind = getMediaKind(file)
-    if (!mediaKind) return NextResponse.json({ error: 'Please choose an image or video file.' }, { status: 400 })
+    if (!mediaKind) return NextResponse.json({ error: 'Please choose an image or an MP4 or WebM video.' }, { status: 400 })
 
     const maxSize = mediaKind === 'video' ? 25 * 1024 * 1024 : 10 * 1024 * 1024
     if (file.size > maxSize) {

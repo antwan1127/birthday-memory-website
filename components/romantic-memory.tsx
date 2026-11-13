@@ -26,7 +26,7 @@ function getDuration() {
 
 function getMediaKind(file: File): Memory['kind'] | null {
   const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name)
-  const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|avi|mkv|ogg)$/i.test(file.name)
+  const isVideo = /\.(mp4|webm)$/i.test(file.name)
 
   if (isImage) return 'image'
   if (isVideo) return 'video'
@@ -142,7 +142,7 @@ export default function RomanticMemory() {
       for (const file of files) {
         const mediaKind = getMediaKind(file)
         if (!mediaKind) {
-          setUploadError('Please choose an image or video file.')
+          setUploadError('Please choose an image or an MP4 or WebM video. Convert MOV videos to MP4 before uploading.')
           continue
         }
 
@@ -233,7 +233,7 @@ export default function RomanticMemory() {
           {isLoading && <div className="empty-state"><Loader2 className="spin" size={22} /><span>Finding our memories...</span></div>}
           {!isLoading && allMemories.length === 0 && <div className="empty-state"><ImagePlus size={22} /><span>Your first memory is waiting below</span></div>}
         </div>
-        <div className="upload-panel"><div><p className="upload-title">Add to our story</p><p className="upload-subtitle">Keep the little moments close. Photos up to 10MB and videos up to 25MB.</p>{uploadError && <p className="upload-error" role="alert">{uploadError}</p>}</div><button className="upload-button" onClick={() => inputRef.current?.click()} disabled={isUploading}>{isUploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} {isUploading ? 'Saving...' : 'Add photos & videos'}</button><input ref={inputRef} type="file" accept="image/*,video/*" multiple onChange={handleUpload} hidden /></div>
+        <div className="upload-panel"><div><p className="upload-title">Add to our story</p><p className="upload-subtitle">Keep the little moments close. Photos up to 10MB; MP4 or WebM videos up to 25MB.</p>{uploadError && <p className="upload-error" role="alert">{uploadError}</p>}</div><button className="upload-button" onClick={() => inputRef.current?.click()} disabled={isUploading}>{isUploading ? <Loader2 className="spin" size={17} /> : <Upload size={17} />} {isUploading ? 'Saving...' : 'Add photos & videos'}</button><input ref={inputRef} type="file" accept="image/*,video/mp4,video/webm,.mp4,.webm" multiple onChange={handleUpload} hidden /></div>
       </section>
 
       <footer><span><Heart size={13} fill="currentColor" /> made for my love</span><span>one day at a time · forever to go</span></footer>
