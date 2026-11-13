@@ -222,7 +222,7 @@ export default function RomanticMemory() {
             <div className="photo-tile" key={`${memory.pathname}-${index}`}>
               <button className="photo-tile__button" type="button" onClick={() => setSelectedMemory(memory)} aria-label={`View memory ${index + 1}`}>
                 {memory.kind === 'video' ? (
-                  <video src={memory.url} playsInline muted loop />
+                  <video src={memory.url} playsInline muted loop autoPlay preload="metadata" />
                 ) : (
                   <img src={memory.url} alt={index === 0 ? 'Us together at night with the city behind us' : index === 1 ? 'Us together on a sunny day' : 'A shared memory'} />
                 )}
@@ -245,7 +245,7 @@ export default function RomanticMemory() {
         <div className="lightbox" role="dialog" aria-modal="true" aria-label="Memory preview" onClick={() => setSelectedMemory(null)}>
           <button className="close-button" onClick={() => setSelectedMemory(null)} aria-label="Close preview"><X /></button>
           {selectedMemory.kind === 'video' ? (
-            <video className="lightbox-media" src={selectedMemory.url} controls playsInline preload="metadata" onClick={(event) => event.stopPropagation()} />
+            <video className="lightbox-media" src={selectedMemory.url} controls playsInline muted autoPlay preload="metadata" onClick={(event) => event.stopPropagation()} />
           ) : (
             <img className="lightbox-media" src={selectedMemory.url} alt="Enlarged shared memory" onClick={(event) => event.stopPropagation()} />
           )}
