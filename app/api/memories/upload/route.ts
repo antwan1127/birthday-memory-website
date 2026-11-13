@@ -2,7 +2,7 @@ import { handleUpload } from '@vercel/blob/client'
 import { NextResponse } from 'next/server'
 
 const imageExtension = /\.(jpe?g|png|gif|webp|heic|heif)$/i
-const videoExtension = /\.(mp4|webm)$/i
+const videoExtension = /\.(mp4|webm|mov|m4v)$/i
 
 export async function POST(request: Request) {
   try {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         const isImage = imageExtension.test(filename)
         const isVideo = videoExtension.test(filename)
         if (!/^[a-z0-9._-]+$/i.test(filename) || (!isImage && !isVideo)) {
-          throw new Error('Please choose a supported image or an MP4 or WebM video.')
+          throw new Error('Please choose a supported image or an MP4, MOV, M4V, or WebM video.')
         }
 
         return {
